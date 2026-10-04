@@ -1335,7 +1335,12 @@ curl -s http://&lt;container-ip&gt;:8080/api/status \
         <p>Als Alternative zur LXC-Installation wird bei jedem Release zusätzlich ein
         fertiges Image nach <a href="https://github.com/ffind-dev/pve-ups/pkgs/container/pve-ups"
         target="_blank" rel="noopener"><code>ghcr.io/ffind-dev/pve-ups</code></a>
-        veröffentlicht. Eine fertige <code>docker-compose.example.yml</code> liegt im
+        veröffentlicht. Das Image ist Multi-Arch — <code>linux/amd64</code>,
+        <code>linux/arm64</code> und <code>linux/arm/v7</code> — und läuft damit auch auf
+        einem Raspberry Pi 3/4/5 mit 64- oder 32-Bit-Betriebssystem; Docker wählt die
+        passende Variante selbst. Ein solches Kleingerät belastet den Akku kaum und läuft
+        weiter, während die geschützten Hosts herunterfahren. Eine fertige
+        <code>docker-compose.example.yml</code> liegt im
         <a href="https://github.com/ffind-dev/pve-ups" target="_blank"
         rel="noopener">Repository</a>; das Wesentliche daraus:</p>
 <pre><code>services:
