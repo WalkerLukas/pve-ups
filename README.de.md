@@ -128,7 +128,9 @@ Danach das Webinterface auf **`http://<container-ip>:8080`** öffnen:
 
 Kein LXC gewünscht? Bei jedem Release wird zusätzlich ein fertiges Image nach
 [`ghcr.io/ffind-dev/pve-ups`](https://github.com/ffind-dev/pve-ups/pkgs/container/pve-ups)
-veröffentlicht:
+veröffentlicht. Es ist Multi-Arch — `linux/amd64`, `linux/arm64` und `linux/arm/v7` — und
+läuft damit auch auf einem Raspberry Pi 3/4/5 mit 64- oder 32-Bit-Betriebssystem; Docker
+wählt die passende Variante selbst:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/ffind-dev/pve-ups/main/docker-compose.example.yml

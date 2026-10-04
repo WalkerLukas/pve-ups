@@ -120,7 +120,9 @@ Then open the web UI at **`http://<container-ip>:8080`**:
 ## Docker (alternative deployment)
 
 Prefer not to run an LXC? A prebuilt image is published on every release to
-[`ghcr.io/ffind-dev/pve-ups`](https://github.com/ffind-dev/pve-ups/pkgs/container/pve-ups):
+[`ghcr.io/ffind-dev/pve-ups`](https://github.com/ffind-dev/pve-ups/pkgs/container/pve-ups).
+It is multi-arch — `linux/amd64`, `linux/arm64` and `linux/arm/v7` — so it also runs on a
+Raspberry Pi 3/4/5 with either a 64-bit or a 32-bit OS; Docker picks the right variant:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/ffind-dev/pve-ups/main/docker-compose.example.yml

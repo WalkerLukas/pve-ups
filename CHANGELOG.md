@@ -10,6 +10,13 @@ reads it dynamically. On every release: bump `__version__` **and** add a section
 
 ## [Unreleased]
 
+### Added
+- **The Docker image runs on a Raspberry Pi.** It is now published for `linux/arm64`
+  (Raspberry Pi 3/4/5 on a 64-bit OS) and `linux/arm/v7` (32-bit OS) alongside
+  `linux/amd64`, so the UPS management can run on a small, low-powered device instead of
+  one of the machines it shuts down. Dependencies without prebuilt ARM wheels are compiled
+  in a separate build stage, so the runtime image carries no compiler.
+
 ## [4.2.0] - 2026-09-17
 
 A small release from GitHub issue reports.

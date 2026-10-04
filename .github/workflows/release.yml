@@ -80,6 +80,9 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      # Emulates arm64/arm/v7 on the amd64 runner (Raspberry Pi 3/4/5, 64- and 32-bit OS).
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
@@ -94,7 +97,7 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           tags: |
             ghcr.io/ffind-dev/pve-ups:${{ steps.version.outputs.version }}
             ghcr.io/ffind-dev/pve-ups:${{ github.ref_name }}
