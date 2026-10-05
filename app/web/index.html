@@ -233,6 +233,10 @@
           <a class="doclink" href="/manual.html#ausloeser" data-manual="ausloeser" target="_blank" rel="noopener" title="Read in the manual: Triggers &amp; thresholds" data-i18n-title="wiz.triggersDoc"><svg class="icon"><use href="#i-help"></use></svg></a></div>
         <p class="help" data-i18n="wiz.triggersHelp">One matching condition is enough. Empty field = condition disabled.</p>
         <div class="row">
+          <label data-i18n-title="th.earlyShutdownTitle"><span data-i18n="th.earlyShutdown">Early shutdown delay (s)</span> <input id="th_early_shutdown_seconds" type="number" min="1" max="86400" step="1" value="30" /></label>
+        </div>
+        <p class="help" data-i18n="th.earlyShutdownHelp">Only for hosts marked for early shutdown. The timer resets when mains returns. Other hosts keep the thresholds below.</p>
+        <div class="row">
           <label title="Trigger a shutdown after this many seconds on battery. Empty = off." data-i18n-title="th.onBatteryTitle"><span data-i18n="th.onBattery">On battery longer than (s)</span> <input id="th_on_battery_seconds" type="number" /></label>
           <label title="Trigger a shutdown when the estimated runtime drops to this value or below. Empty = off." data-i18n-title="th.runtimeTitle"><span data-i18n="th.runtime">Runtime below (min)</span> <input id="th_runtime_below_minutes" type="number" /></label>
           <label title="Trigger a shutdown when the charge drops to this percentage or below. Empty = off." data-i18n-title="th.chargeTitle"><span data-i18n="th.charge">Charge below (%)</span> <input id="th_charge_below_percent" type="number" /></label>

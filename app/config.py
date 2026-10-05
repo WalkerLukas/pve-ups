@@ -301,6 +301,7 @@ class HostConfig(BaseModel):
     token_secret: SecretStr = SecretStr("")
     verify_tls: bool = False  # PVE ships self-signed certs by default
     this_host: bool = False  # the host carrying this appliance -> shut down last
+    shutdown_on_power_loss: bool = False  # early load shedding; never for this_host
     order: int = 0  # ascending; this_host is forced last regardless
     enabled: bool = True
 
@@ -439,6 +440,7 @@ class Thresholds(BaseModel):
     """Shutdown triggers. Any condition that is met (and enabled) fires the shutdown."""
 
     on_battery_seconds: Optional[int] = 600  # on battery longer than this
+    early_shutdown_seconds: int = 30  # separate timer for selected load-shedding hosts
     runtime_below_minutes: Optional[int] = 10  # estimated runtime under this
     charge_below_percent: Optional[int] = 30  # battery charge under this
     on_battery_low: bool = True  # UPS reports batteryLow/Depleted
@@ -521,6 +523,7 @@ class Thresholds(BaseModel):
         # a typo; anything a real estate needs still passes untouched.
         _repair(self, "poll_interval_normal_s", lo=1, hi=3600)
         _repair(self, "poll_interval_battery_s", lo=1, hi=300)
+        _repair(self, "early_shutdown_seconds", lo=1, hi=86400)
         _repair(self, "on_battery_seconds", lo=1, hi=86400)
         _repair(self, "runtime_below_minutes", lo=1, hi=1440)
         _repair(self, "charge_below_percent", lo=0, hi=100)

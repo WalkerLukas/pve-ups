@@ -373,6 +373,20 @@ unterscheiden sich von Proxmox VE und erklären die Befehle oben:
 
 ## Standard-Auslöser
 
+Für ausgewählte Geräte lässt sich **Bei Stromausfall früh herunterfahren** auf der
+Host-Karte aktivieren. Unter Auslöser gibt es dafür **Verzögerung für frühes
+Herunterfahren (s)**, standardmäßig **30 Sekunden** ab erkanntem Batteriebetrieb.
+Die Abschaltung erfolgt bei der nächsten Abfrage nach Ablauf. Kehrt vorher der Strom
+zurück, wird der Timer zurückgesetzt. USV-Zuordnung und UND/ODER-Regel gelten weiter.
+Nicht markierte Geräte warten auf die normalen Grenzwerte. Diese bleiben auch für
+markierte Geräte wirksam, damit ein kritischer Akkustand nicht auf den frühen Timer
+warten muss. Der Host mit der Appliance ist vom frühen Herunterfahren ausgenommen.
+
+Frühe Abschaltungen beachten die konfigurierte Reihenfolge, führen aber keine globale
+Cluster-Vorbereitung aus und nehmen keine anderen Cluster-Mitglieder mit. HA kann
+daher Gäste auf andere Knoten verschieben. Die frühe Auswahl entsprechend treffen;
+bei den normalen Grenzwerten bleibt die konfigurierte Cluster-Vorbereitung erhalten.
+
 Es genügt **eine** zutreffende Bedingung (im Wizard änderbar; Feld leeren = aus):
 
 | Bedingung | Standard |

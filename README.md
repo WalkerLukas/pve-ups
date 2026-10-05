@@ -345,6 +345,19 @@ from Proxmox VE and explain the commands above:
 
 ## Default triggers
 
+For selected devices, enable **Shut down early on power loss** on their host card.
+The separate **Early shutdown delay (s)** under Triggers defaults to **30 seconds**
+from detected battery operation. The request is sent on the next poll after the timer
+expires. Mains returning before expiry resets the timer. UPS assignments and AND/OR
+policies still apply; unmarked hosts wait for the regular thresholds below. Those
+thresholds remain active for marked hosts too, so a critical battery does not wait
+for the early timer. The appliance's own host cannot use early shutdown.
+
+Early loads follow their configured order, without global cluster preparation or
+taking other cluster members down. On a PVE cluster, HA may therefore relocate their
+guests; choose early loads with that behavior in mind. Regular threshold-triggered
+shutdowns retain the configured cluster preparation.
+
 **One** matching condition is enough (all editable in the wizard; empty field = off):
 
 | Condition | Default |

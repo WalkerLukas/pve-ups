@@ -178,7 +178,9 @@ def shutdown_budget(cfg: AppConfig) -> ShutdownBudget:
     """
     th = cfg.thresholds
     enabled = [h for h in cfg.hosts if h.enabled]
-    stages = len({(h.this_host, h.order) for h in enabled}) or 1
+    # Early and regular loads can form separate stages even with the same order.
+    stages = len({(h.this_host, h.shutdown_on_power_loss and not h.this_host, h.order)
+                  for h in enabled}) or 1
     # The pre-this_host retry pass only exists where there is both something to retry and
     # a final stage to run before: a single stage has nothing ahead of it.
     if stages > 1 and any(h.this_host for h in enabled):
@@ -1088,6 +1090,17 @@ class Engine:
         # of this method — clearing the preparation latch and running the whole failed
         # sequence again on the next poll, every 8 s, with a CRITICAL pair each time.
         had_eligible = bool(eligible)
+        # Shed only the selected loads before the normal thresholds fire. Cluster
+        # preparation can stop guests and pull in the entire cluster, so it belongs
+        # exclusively to the later, threshold-triggered shutdown.
+        early = [(h, r) for h, r in eligible
+                 if self._host_trigger_reason(h, allow_early=False) is None
+                 and h.key not in self.cluster_unit_hosts]
+        early_keys = {h.key for h, _ in early}
+        eligible = [(h, r) for h, r in eligible if h.key not in early_keys]
+        failed_earlier: list[tuple[HostConfig, str]] = []
+        for _, group in groupby(early, key=lambda hr: hr[0].order):
+            failed_earlier += await self._fire_stage(list(group))
         if eligible:
             eligible = await self._prepare_clusters(eligible)
 
@@ -1097,7 +1110,6 @@ class Engine:
         # awaited inside the poll loop, from stalling the battery countdown as well.
         # ``eligible`` is already sorted by (this_host, order, name), so the groups are
         # contiguous; targets.shutdown() carries a hard deadline, so no stage can outlast it.
-        failed_earlier: list[tuple[HostConfig, str]] = []
         for stage_key, group in groupby(eligible, key=lambda hr: (hr[0].this_host, hr[0].order)):
             staged = list(group)
             # Last chance before the appliance powers itself off. Every stage but this one
@@ -1284,18 +1296,23 @@ class Engine:
         # already owns the guard that refuses to run one during an outage.
         self._rearm_selftest_pending = True
 
-    def _host_trigger_reason(self, host: HostConfig) -> Optional[str]:
+    def _host_trigger_reason(
+        self, host: HostConfig, *, allow_early: bool = True
+    ) -> Optional[str]:
         """A host is eligible when its feeds satisfy its policy.
 
         ``all`` (default, redundant PSUs): every feed must have triggered.
         ``any``: at least one feed has triggered.
         Empty ``ups_ids`` falls back to "all configured UPS".
+        Selected early loads also accept the separate battery timer per feed.
         """
         feed_ids = self.cfg.feed_ids_for(host)
         rts = [(uid, self.ups_rt[uid]) for uid in feed_ids if uid in self.ups_rt]
         if not rts:
             return None
-        fired = [(uid, rt) for uid, rt in rts if rt.triggered]
+        early = allow_early and host.shutdown_on_power_loss and not host.this_host
+        fired = [(uid, rt) for uid, rt in rts
+                 if rt.triggered or (early and self._early_shutdown_due(rt))]
         if host.ups_policy == "any":
             ready = len(fired) >= 1
         else:  # "all"
@@ -1307,7 +1324,24 @@ class Engine:
             u = self.cfg.ups_by_id(uid)
             return u.label if u else uid
 
-        return "; ".join(f"{_label(uid)}: {rt.trigger_reason}" for uid, rt in fired)
+        early_reason = (
+            "mains lost — early shutdown timer "
+            f"({self.cfg.thresholds.early_shutdown_seconds}s) elapsed"
+        )
+        return "; ".join(
+            f"{_label(uid)}: {rt.trigger_reason if rt.triggered else early_reason}"
+            for uid, rt in fired
+        )
+
+    def _early_shutdown_due(self, rt: _UpsRuntime) -> bool:
+        # Only a confirmed, ongoing outage may shed loads early. The regular
+        # thresholds retain their existing communication-loss fallback separately.
+        elapsed = self._ups_elapsed_on_battery(rt)
+        return (
+            rt.state.reachable and rt.state.on_battery
+            and not rt.restored_unconfirmed and elapsed is not None
+            and elapsed >= self.cfg.thresholds.early_shutdown_seconds
+        )
 
     def _ups_elapsed_on_battery(self, rt: _UpsRuntime) -> Optional[int]:
         """How long this UPS has been on battery, in seconds — our own clock, or nothing.
@@ -1553,6 +1587,16 @@ class Engine:
 
         hosts = ", ".join(_desc(h) for h in self.cfg.ordered_hosts()) or "(no hosts)"
         msg = f"Test (dry-run): order {hosts}."
+        early_hosts = [h for h in self.cfg.ordered_hosts()
+                       if h.shutdown_on_power_loss and not h.this_host]
+        if early_hosts:
+            msg += (
+                f" Early load shedding after {self.cfg.thresholds.early_shutdown_seconds}s "
+                f"of confirmed battery operation: {', '.join(_desc(h) for h in early_hosts)}. "
+                "UPS policies still apply; early loads skip global cluster preparation. "
+                "Remaining hosts wait for the regular thresholds, which also remain "
+                "active for early loads."
+            )
         extra = self._cluster_preview()
         if extra:
             msg += " " + extra
@@ -3410,6 +3454,7 @@ class Engine:
                     "id": h.key,
                     "type": getattr(h, "type", "pve"),
                     "this_host": h.this_host,
+                    "shutdown_on_power_loss": h.shutdown_on_power_loss,
                     # Cluster membership as configured, plus the name discovered from the
                     # API (None until a cluster has been inspected). The UI shows it on the
                     # collapsed host card, the way "this host" shows its star.

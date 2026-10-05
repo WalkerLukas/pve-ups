@@ -396,7 +396,9 @@ async function refreshStatus() {
           { what: h.incomplete }))}">${esc(t("hosts.incomplete"))}</span>`
       : "";
     const err = h.last_error || h.last_test_error || "";
-    return `<tr><td>${esc(h.name)}${kind}${clus}${nodeBad}${stale}${incomplete}${star}</td>
+    const early = h.shutdown_on_power_loss && !h.this_host
+      ? ` <span class="chip muted" title="${esc(t("host.powerLossTitle"))}">${esc(t("host.powerLoss"))}</span>` : "";
+    return `<tr><td>${esc(h.name)}${kind}${clus}${nodeBad}${stale}${incomplete}${star}${early}</td>
       <td>${feeds} <span class="muted">(${esc(policy)})</span></td>
       <td>${pill(stLbl, cls)}</td><td class="muted">${esc(err)}</td></tr>`;
   }).join("");
@@ -879,12 +881,14 @@ function syncThisHostFromAppliance(el) {
   if (!node || external) {
     chk.disabled = false;
     note.hidden = true;
+    el.querySelector(".h_power_loss").disabled = chk.checked;
     return;
   }
   const mine = el.querySelector(".h_name").value.trim() === node;
   chk.checked = mine;
   chk.disabled = true;
   note.hidden = !mine;
+  el.querySelector(".h_power_loss").disabled = mine;
 }
 
 function renderApplianceGuests(sel, guests, chosen) {
@@ -961,6 +965,7 @@ async function loadConfig() {
   // for the whole function body (temporal dead zone, so above this line too).
   const th = c.thresholds;
   setVal("th_on_battery_seconds", th.on_battery_seconds);
+  setVal("th_early_shutdown_seconds", th.early_shutdown_seconds ?? 30);
   setVal("th_runtime_below_minutes", th.runtime_below_minutes);
   setVal("th_charge_below_percent", th.charge_below_percent);
   setChk("th_on_battery_low", th.on_battery_low);
@@ -1054,6 +1059,7 @@ function addHostRow(h, isNew, open) {
       <label class="h_orderlbl" title="${esc(t("host.orderTitle"))}">${esc(t("host.order"))} <input class="h_order" type="number" value="${h.order || 0}" /></label>
       <label class="chkline" title="${esc(t("host.verifyTitle"))}"><input class="h_verify" type="checkbox" ${h.verify_tls ? "checked" : ""} /> ${esc(t("host.verify"))}</label>
       <label class="chkline h_thislbl" title="${esc(t("host.thisTitle"))}"><input class="h_this" type="checkbox" ${h.this_host ? "checked" : ""} /> ${esc(t("host.this"))}</label>
+      <label class="chkline" title="${esc(t("host.powerLossTitle"))}"><input class="h_power_loss" type="checkbox" ${h.shutdown_on_power_loss ? "checked" : ""} /> ${esc(t("host.powerLoss"))}</label>
       <span class="help h_thisderived" hidden>${esc(t("host.thisHostDerived"))}</span>
       <label class="chkline" title="${esc(t("host.enabledTitle"))}"><input class="h_enabled" type="checkbox" ${h.enabled !== false ? "checked" : ""} /> ${esc(t("host.enabled"))}</label>
     </div>
@@ -1124,6 +1130,7 @@ function addHostRow(h, isNew, open) {
     el.querySelector(".h_sum_meta").textContent =
       "· " + hostTypeLabel(ty)
       + (inCluster ? " · " + (cname || t("host.sumCluster")) : "")
+      + (el.querySelector(".h_power_loss").checked && !isThis ? " · " + t("host.powerLoss") : "")
       + (en ? "" : " " + t("host.inactive"));
   };
   // Kept on the element so a later status refresh can redraw every summary: the cluster
@@ -1163,6 +1170,7 @@ function addHostRow(h, isNew, open) {
     // host is last whatever it says. Hide the field rather than let it suggest an
     // effect it does not have. The value is kept, so unticking restores it.
     el.querySelector(".h_orderlbl").hidden = el.querySelector(".h_this").checked;
+    el.querySelector(".h_power_loss").disabled = el.querySelector(".h_this").checked;
     // A Backup Server is never part of a PVE cluster, so the whole group is PVE-only.
     // Unlike "this host" the values are NOT cleared: switching a card back to PVE should
     // find the cluster settings as they were.
@@ -1190,6 +1198,7 @@ function addHostRow(h, isNew, open) {
   el.querySelector(".h_name").oninput = () => { updSum(); drawConfigTopology(); };
   el.querySelector(".h_url").oninput = syncDuplicateUrls;
   el.querySelector(".h_this").onchange = () => { syncFlags(); drawConfigTopology(); };
+  el.querySelector(".h_power_loss").onchange = () => { updSum(); renderShutdownSequence(); };
   el.querySelector(".h_cluster").onchange = () => { syncFlags(); syncClusterThresholds(); };
   el.querySelector(".h_cluster_ceph").onchange = syncFlags;
   el.querySelector(".h_cluster_shutdown_all").onchange = syncFlags;
@@ -1291,6 +1300,7 @@ function hostFromRow(tr) {
     token_secret: secret === "" ? SECRET_PLACEHOLDER : secret,
     verify_tls: tr.querySelector(".h_verify").checked,
     this_host: tr.querySelector(".h_this").checked,
+    shutdown_on_power_loss: tr.querySelector(".h_power_loss").checked,
     order: Number(tr.querySelector(".h_order").value || 0),
     enabled: tr.querySelector(".h_enabled").checked,
     ups_ids: Array.from(tr.querySelectorAll(".h_feed")).filter((c) => c.checked).map((c) => c.value),
@@ -1483,7 +1493,7 @@ function drawConfigTopology() {
 }
 
 // Preview of the order the engine would actually use, live from the form. Mirrors
-// AppConfig.ordered_hosts(): sort by (this_host, order, name), then group — hosts
+// Show early loads first, then AppConfig.ordered_hosts() order — hosts
 // sharing a stage are commanded at the same time, and "this host" forms the last
 // stage on its own. Without this, neither "which number goes first" nor the staged
 // behaviour is visible anywhere in the UI.
@@ -1495,10 +1505,11 @@ function renderShutdownSequence() {
       name: tr.querySelector(".h_name").value.trim(),
       order: Number(tr.querySelector(".h_order").value || 0),
       this_host: tr.querySelector(".h_this").checked,
+      early: tr.querySelector(".h_power_loss").checked && !tr.querySelector(".h_this").checked,
       enabled: tr.querySelector(".h_enabled").checked,
     }))
     .filter((h) => h.name && h.enabled)
-    .sort((a, b) => (a.this_host - b.this_host) || (a.order - b.order)
+    .sort((a, b) => (b.early - a.early) || (a.this_host - b.this_host) || (a.order - b.order)
       || a.name.localeCompare(b.name));
 
   if (!hosts.length) {
@@ -1508,11 +1519,12 @@ function renderShutdownSequence() {
   const stages = [];
   hosts.forEach((h) => {
     const prev = stages[stages.length - 1];
-    const same = prev && prev[0].this_host === h.this_host && prev[0].order === h.order;
+    const same = prev && prev[0].early === h.early && prev[0].this_host === h.this_host && prev[0].order === h.order;
     if (same) prev.push(h); else stages.push([h]);
   });
   const chain = stages.map((stage, i) =>
     `<span class="chip muted">${i + 1}.</span> ` +
+    (stage[0].early ? `<b>${esc(t("host.powerLoss"))}:</b> ` : "") +
     stage.map((h) => esc(h.name) + (h.this_host ? " ★" : "")).join(" + ")
   ).join(" &rarr; ");
   el.innerHTML = `<b>${esc(t("hosts.seq"))}</b> ${chain}<br>`
@@ -1700,6 +1712,7 @@ function buildConfig() {
     hosts,
     thresholds: {
       on_battery_seconds: getNum("th_on_battery_seconds"),
+      early_shutdown_seconds: getNum("th_early_shutdown_seconds") ?? 30,
       runtime_below_minutes: getNum("th_runtime_below_minutes"),
       charge_below_percent: getNum("th_charge_below_percent"),
       on_battery_low: getChk("th_on_battery_low"),
